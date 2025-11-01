@@ -2,7 +2,7 @@
 
 An intelligent AI assistant that represents your portfolio, built with **LangGraph**, **Google Gemini**, and **Streamlit**. This chatbot automatically syncs with your GitHub portfolio projects and helps recruiters learn about your work, skills, and contact information through natural conversation.
 ---
-
+Live - https://devfolio-agent.streamlit.app/
 ## ✨ Features
 
 ### 🔄 **Automated GitHub Sync**
