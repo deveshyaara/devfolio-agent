@@ -402,4 +402,4 @@ If you find this project useful, please consider giving it a ⭐!
 
 ---
 
-**Built with ❤️ using LangGraph, Gemini, and Streamlit**
+
