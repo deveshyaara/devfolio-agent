@@ -11,7 +11,6 @@ from langgraph.prebuilt import ToolNode
 
 # --- Import Gemini models ---
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_huggingface import HuggingFaceEmbeddings
 
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
@@ -132,11 +131,8 @@ def create_project_retriever():
 
     print(f"Embedding {len(documents)} project READMEs...")
     
-    print("Initializing local embedding model (HuggingFace)...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2",
-        model_kwargs={'device': 'cpu'} 
-    )
+    print("Initializing Gemini embedding model...")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-2")
 
     print("Creating vector store...")
     vector_store = FAISS.from_documents(documents, embeddings)
@@ -281,7 +277,7 @@ else:
 
 # (The rest of the script is the same from here)
 tool_node = ToolNode(tools)
-model = ChatGoogleGenerativeAI(temperature=0, model="gemini-2.0-flash-exp")
+model = ChatGoogleGenerativeAI(temperature=0, model="gemini-3.5-flash")
 model_with_tools = model.bind_tools(tools)
 
 print("Building agent graph from scratch...")
@@ -337,7 +333,7 @@ print("Agent is ready!")
 # --- 6. RUN THE AGENT ---
 def run_chat(question, chat_history):
     print(f"\n---")
-    print(f"👤 Recruiter: {question}")
+    print(f"Recruiter: {question}")
     
     # Convert simple chat history to LangChain messages
     messages = []
@@ -358,10 +354,15 @@ def run_chat(question, chat_history):
     
     if output:
         final_response = output["messages"][-1].content
-        print(f"🤖 Agent: {final_response}")
+        if isinstance(final_response, list):
+            final_response = "".join(
+                item["text"] if isinstance(item, dict) and "text" in item else (item if isinstance(item, str) else "")
+                for item in final_response
+            )
+        print(f"Agent: {final_response}")
         return final_response
     else:
-        print("🤖 Agent: Error - No output from graph.")
+        print("Agent: Error - No output from graph.")
         return "Sorry, I ran into an error."
 
 # --- 7. TEST IT ---

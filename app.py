@@ -1,6 +1,9 @@
 import streamlit as st
 from langchain_core.messages import HumanMessage, AIMessage
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Import agent and configuration
 try:
     from agent import app as portfolio_agent
@@ -59,6 +62,11 @@ if prompt := st.chat_input("💬 Ask about projects, skills, experience..."):
                 # Call agent
                 response = portfolio_agent.invoke({"messages": history})
                 bot_response = response["messages"][-1].content
+                if isinstance(bot_response, list):
+                    bot_response = "".join(
+                        item["text"] if isinstance(item, dict) and "text" in item else (item if isinstance(item, str) else "")
+                        for item in bot_response
+                    )
 
                 # Display and save response
                 st.markdown(bot_response)
