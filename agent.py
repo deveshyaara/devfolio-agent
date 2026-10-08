@@ -31,6 +31,7 @@ MY_PROFILE_PIC_URL = os.environ.get("MY_PROFILE_PIC_URL", "https://placehold.co/
 # Global variables to store project data
 project_names_list = []
 all_project_documents = []  # Store all README documents for synthesis
+projects_metadata = [] # Store compact summaries
 
 # Validate required variables
 if not GOOGLE_API_KEY:
@@ -60,7 +61,15 @@ def fetch_and_load_projects():
         response = requests.get(api_url, headers=headers)
         response.raise_for_status() 
         data = response.json()
-        repo_urls = [item["clone_url"] for item in data.get("items", [])]
+        repo_urls = []
+        for item in data.get("items", []):
+            repo_urls.append(item["clone_url"])
+            projects_metadata.append({
+                "name": item["name"],
+                "description": item.get("description", "No description provided."),
+                "language": item.get("language", "Unknown"),
+                "url": item["html_url"],
+            })
         
         if not repo_urls:
             print(f"Warning: No repos found with topic '{PORTFOLIO_TOPIC}'. Check GitHub.")
@@ -86,8 +95,14 @@ def fetch_and_load_projects():
         try:
             if repo_path.exists():
                 print(f"Pulling latest changes for {repo_name}...")
-                repo = git.Repo(repo_path)
-                repo.remotes.origin.pull()
+                try:
+                    repo = git.Repo(repo_path)
+                    repo.remotes.origin.pull()
+                except Exception as e:
+                    print(f"Detected invalid repository state for {repo_name} ({e}). Recreating local clone...")
+                    import shutil
+                    shutil.rmtree(repo_path)
+                    git.Repo.clone_from(repo_url, repo_path)
             else:
                 print(f"Cloning {repo_name}...")
                 git.Repo.clone_from(repo_url, repo_path)
@@ -176,45 +191,24 @@ def get_resume_link(query: str = ""):
     else:
         return "Sorry, the resume link is not available at the moment."
 
-# --- NEW TOOL: Get All Project Contexts for Synthesis ---
+# --- NEW TOOL: Get Compact Project Summaries ---
 
-def get_all_project_contexts(query: str = "") -> str:
+def get_projects(query: str = "") -> str:
     """
-    Returns ALL project README contents for synthesis questions.
-    The LLM can read all projects at once and answer questions like:
-    - "List all projects"
-    - "What tech stacks do you know?"
-    - "What are your skills?"
-    - "Tell me about all your projects"
+    Returns a compact summary of ALL projects in the portfolio (name, description, tech stack, URL).
+    Use this tool when asked to 'list all projects', 'what projects do you have', 
+    or any general question about the portfolio's contents.
     
     Args:
-        query: Optional query string to provide context
+        query: Optional query string
     
     Returns:
-        A formatted string with all README contents
+        JSON string of project metadata
     """
-    if not all_project_documents:
-        return "No project documents are currently loaded."
-    
-    # Format all READMEs into one context
-    context_parts = []
-    for doc in all_project_documents:
-        project_name = doc.metadata.get("name", "Unknown Project")
-        content = doc.page_content
-        context_parts.append(f"=== PROJECT: {project_name} ===\n{content}\n")
-    
-    full_context = "\n".join(context_parts)
-    
-    return f"""Here are ALL the project READMEs from {MY_NAME}'s portfolio:
-
-{full_context}
-
-Based on these projects, you can now answer questions about:
-- The complete list of projects
-- Technologies and tech stacks used across all projects
-- Skills demonstrated
-- Project descriptions and purposes
-"""
+    if not projects_metadata:
+        return "No project metadata is currently loaded."
+    import json
+    return json.dumps(projects_metadata, indent=2)
 
 # --- 5. LANGGRAPH "FROM SCRATCH" SETUP ---
 
@@ -246,15 +240,12 @@ resume_tool = Tool(
 )
 
 all_projects_context_tool = Tool(
-    name="get_all_project_contexts",
-    func=get_all_project_contexts,
+    name="get_projects",
+    func=get_projects,
     description=(
-        "Returns ALL project README files at once for synthesis and general questions. "
+        "Returns a lightweight summary of all projects. "
         "Use this tool when asked to 'list all projects', 'what projects do you have', "
-        "'what technologies/tech stacks do you know', 'what are your skills', "
-        "'tell me about your work', or any general question about the portfolio. "
-        "This gives you ALL project data so you can synthesize answers like extracting "
-        "project names, combining tech stacks, or summarizing all work."
+        "or to see a high-level overview before querying specific project details."
     )
 )
 
@@ -277,8 +268,15 @@ else:
 
 # (The rest of the script is the same from here)
 tool_node = ToolNode(tools)
-model = ChatGoogleGenerativeAI(temperature=0, model="gemini-3.5-flash")
-model_with_tools = model.bind_tools(tools)
+
+# Configure primary model with 0 retries so 429 fails immediately
+primary_model = ChatGoogleGenerativeAI(temperature=0, model="gemini-3.5-flash", max_retries=0)
+fallback_model = ChatGoogleGenerativeAI(temperature=0, model="gemma-4-26b-a4b-it")
+
+# Bind tools and add fallback
+primary_with_tools = primary_model.bind_tools(tools)
+fallback_with_tools = fallback_model.bind_tools(tools)
+model_with_tools = primary_with_tools.with_fallbacks([fallback_with_tools])
 
 print("Building agent graph from scratch...")
 
@@ -295,7 +293,8 @@ def call_model_node(state: AgentState):
 Your role is to help recruiters and visitors learn about {MY_NAME}'s projects, skills, and contact information.
 
 IMPORTANT: You MUST use the provided tools to answer questions. Never make up or hallucinate information.
-- For project questions: Use get_all_project_contexts or project_retriever tools
+- For listing projects or high-level summaries: Use get_projects
+- For deep dives into a specific project's tech stack or architecture: Use project_retriever
 - For scheduling/Calendly links: Use get_scheduling_link tool
 - For LinkedIn: Use get_linkedin_link tool  
 - For resume: Use get_resume_link tool
@@ -327,32 +326,22 @@ workflow.add_conditional_edges(
     {"call_tool": "call_tool", END: END}
 )
 workflow.add_edge("call_tool", "call_model")
-app = workflow.compile()
+from langgraph.checkpoint.memory import MemorySaver
+memory = MemorySaver()
+app = workflow.compile(checkpointer=memory)
 print("Agent is ready!")
 
 # --- 6. RUN THE AGENT ---
-def run_chat(question, chat_history):
+def run_chat(question, thread_id="default"):
     print(f"\n---")
     print(f"Recruiter: {question}")
     
-    # Convert simple chat history to LangChain messages
-    messages = []
-    for msg in chat_history:
-        if msg["role"] == "user":
-            messages.append(HumanMessage(content=msg["content"]))
-        else:
-            messages.append(AIMessage(content=msg["content"]))
+    # We no longer manually reconstruct history. The checkpointer handles it.
+    inputs = {"messages": [HumanMessage(content=question)]}
+    config = {"configurable": {"thread_id": thread_id}}
     
-    # Add the new question
-    messages.append(HumanMessage(content=question))
-    
-    inputs = {"messages": messages}
-    
-    output = None
-    # Use invoke, as stream is complex to handle in Streamlit
-    output = app.invoke(inputs) 
-    
-    if output:
+    try:
+        output = app.invoke(inputs, config=config)
         final_response = output["messages"][-1].content
         if isinstance(final_response, list):
             final_response = "".join(
@@ -361,41 +350,32 @@ def run_chat(question, chat_history):
             )
         print(f"Agent: {final_response}")
         return final_response
-    else:
-        print("Agent: Error - No output from graph.")
+    except Exception as e:
+        print(f"Agent: Error - {e}")
         return "Sorry, I ran into an error."
 
 # --- 7. TEST IT ---
 if __name__ == "__main__":
     print("\n--- Running agent.py in test mode ---")
-    test_history = []
     
     # Test 1
     q1 = "Hello, who are you?"
-    resp1 = run_chat(q1, test_history)
-    test_history.append({"role": "user", "content": q1})
-    test_history.append({"role": "assistant", "content": resp1})
+    run_chat(q1)
     
     # Test 2
     q2 = "What projects are in your portfolio?"
-    resp2 = run_chat(q2, test_history)
-    test_history.append({"role": "user", "content": q2})
-    test_history.append({"role": "assistant", "content": resp2})
+    run_chat(q2)
 
     # Test 3
     q3 = "Do you have a link to your resume?"
-    resp3 = run_chat(q3, test_history)
-    test_history.append({"role": "user", "content": q3})
-    test_history.append({"role": "assistant", "content": resp3})
+    run_chat(q3)
 
     # Test 4 - Scheduling link
     q4 = "Give me the Calendly link"
-    resp4 = run_chat(q4, test_history)
-    test_history.append({"role": "user", "content": q4})
-    test_history.append({"role": "assistant", "content": resp4})
+    run_chat(q4)
     
     # Test 5 - Alternative scheduling request
     q5 = "scheduling"
-    resp5 = run_chat(q5, test_history)
+    run_chat(q5)
     print(f"\n✅ All tests completed successfully!")
 

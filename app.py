@@ -51,16 +51,16 @@ if prompt := st.chat_input("💬 Ask about projects, skills, experience..."):
     with st.chat_message("assistant", avatar="🤖"):
         with st.spinner("🤔 Thinking..."):
             try:
-                # Convert to LangChain format
-                history = []
-                for msg in st.session_state.messages:
-                    if msg["role"] == "user":
-                        history.append(HumanMessage(content=msg["content"]))
-                    else:
-                        history.append(AIMessage(content=msg["content"]))
+                # Generate thread ID if not exists
+                if "thread_id" not in st.session_state:
+                    import uuid
+                    st.session_state.thread_id = str(uuid.uuid4())
 
-                # Call agent
-                response = portfolio_agent.invoke({"messages": history})
+                # Call agent using LangGraph checkpointer, sending ONLY the new message
+                inputs = {"messages": [HumanMessage(content=prompt)]}
+                config = {"configurable": {"thread_id": st.session_state.thread_id}}
+                
+                response = portfolio_agent.invoke(inputs, config=config)
                 bot_response = response["messages"][-1].content
                 if isinstance(bot_response, list):
                     bot_response = "".join(
