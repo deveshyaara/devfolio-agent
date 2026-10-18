@@ -12,15 +12,15 @@ GitHub public repositories with configured topic
 
 ## Development
 
-Python 3.12, [uv](https://docs.astral.sh/uv/), and a Supabase database with pgvector are required. No database is needed for the offline tests.
+Python 3.12, [uv](https://docs.astral.sh/uv/), and a Supabase database with pgvector are required.
 
 ```sh
-uv sync --frozen
+uv sync --frozen --group dev
 cp .env.example .env
 # Fill server-side configuration; do not commit .env.
-uv run pytest -m 'not postgres'
-uv run ruff check .
-uv run ruff format --check .
+uv pip check
+uv run --group dev ruff check .
+uv run --group dev ruff format --check .
 ```
 
 Apply `migrations/001_knowledge.sql` as database owner and provision separate reader/writer login users as described in [operations](docs/OPERATIONS.md). Then:
@@ -34,10 +34,11 @@ uv run uvicorn health:app --host 0.0.0.0 --port 8000
 
 Use `SUPABASE_SYNC_DB_URL` only in ingestion. Runtime `SUPABASE_DB_URL` should belong to a user granted `devfolio_reader`; it cannot write knowledge. Every connection to a remote database must require TLS. No Supabase HTTP key is used.
 
-`requirements.txt` is the hash-pinned production export for Streamlit Community Cloud; `pyproject.toml` and `uv.lock` are the dependency source of truth. Regenerate the export after deliberate upgrades:
+`pyproject.toml` and `uv.lock` define the dependencies. Streamlit Community Cloud installs from the lockfile; the default installation excludes development tools. After deliberate dependency changes:
 
 ```sh
-uv export --frozen --no-dev --no-emit-project --format requirements-txt --output-file requirements.txt
+uv lock
+uv sync --frozen
 ```
 
 ## Behavior
@@ -54,6 +55,6 @@ uv export --frozen --no-dev --no-emit-project --format requirements-txt --output
 
 ## Verification and deployment
 
-See [audit](docs/AUDIT.md), [operations and rollback](docs/OPERATIONS.md), and [engineering/test report](docs/ENGINEERING_REPORT.md). Tests use mocks except those explicitly marked `postgres`; use only a disposable database ending in `_test` for those. Root `test_*.py` files are preserved manual, live-service diagnostics and are deliberately excluded from offline pytest collection.
+See [operations and rollback](docs/OPERATIONS.md) and [live setup verification](docs/LIVE_SETUP.md). CI checks dependency consistency, lint and formatting. The automated suite and old live diagnostic scripts were removed at the owner's request; CI no longer runs tests or provisions a disposable database.
 
-Local tests cannot establish live Gemini answer quality, production Supabase availability, or deployed iframe/Stop behavior. Complete the deployment acceptance checks before switching production away from the previous FAISS release.
+Use the deployment acceptance checks to verify live model responses, database availability and hosted chat behavior after changes.
