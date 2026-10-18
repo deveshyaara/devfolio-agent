@@ -30,7 +30,7 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           SUPABASE_SYNC_DB_URL: ${{ secrets.SUPABASE_SYNC_DB_URL }}
           GITHUB_TOKEN: ${{ secrets.PORTFOLIO_GITHUB_TOKEN || github.token }}
-          GITHUB_USERNAME: ${{ vars.GITHUB_USERNAME }}
+          GITHUB_USERNAME: ${{ vars.PORTFOLIO_GITHUB_USERNAME }}
           PORTFOLIO_TOPIC: ${{ vars.PORTFOLIO_TOPIC || 'portfolio' }}
           EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL || 'gemini-embedding-2' }}
           EMBEDDING_VERSION: ${{ vars.EMBEDDING_VERSION || '2026-04' }}

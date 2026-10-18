@@ -14,5 +14,6 @@ def test_workflow_structure_and_least_privilege():
     command = next(s for s in steps if s.get("name") == "Incremental synchronization")
     assert "python -m devfolio.sync" in command["run"]
     assert "${{ secrets.SUPABASE_SYNC_DB_URL }}" == command["env"]["SUPABASE_SYNC_DB_URL"]
+    assert command["env"]["GITHUB_USERNAME"] == "${{ vars.PORTFOLIO_GITHUB_USERNAME }}"
     assert "--allow-empty" not in command["run"]
     assert any(s.get("if") == "always()" and "upload-artifact" in s.get("uses", "") for s in steps)

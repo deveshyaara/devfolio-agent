@@ -9,7 +9,7 @@ Use `.env.example` for variable names and placeholders. Never commit credentials
 | GOOGLE_API_KEY | Streamlit host and Actions secrets | Gemini chat/query embeddings or document ingestion |
 | SUPABASE_DB_URL | Streamlit/optional health host only | TLS reader login, granted devfolio_reader |
 | SUPABASE_SYNC_DB_URL | Actions secrets / trusted sync shell only | TLS writer login, granted devfolio_writer |
-| GITHUB_USERNAME | Host and Actions repository variable | Source account and knowledge scope |
+| GITHUB_USERNAME | Host; Actions repository variable PORTFOLIO_GITHUB_USERNAME | Source account and knowledge scope; GitHub reserves configuration variable names starting with GITHUB_ |
 | PORTFOLIO_TOPIC | Host and Actions variable, default portfolio | Public repository eligibility |
 | GITHUB_TOKEN | Ingestion only, optional | Public API quota; workflow uses github.token by default |
 | PORTFOLIO_GITHUB_TOKEN | Optional Actions secret | Override token when public API quota requires it |

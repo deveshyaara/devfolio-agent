@@ -1,6 +1,6 @@
 # DevFolio reliability upgrade — engineering report
 
-Date: 2026-10-18, India time. This is an implemented and locally tested upgrade on feature branches. It is **not a verified production deployment**.
+Date: 2026-10-18, India time. This report records the implementation-stage findings. See [live setup verification](LIVE_SETUP.md) for subsequent merges, Supabase deployment, provider checks, initial ingestion and hosted chat results.
 
 ## A. Executive summary
 

@@ -59,6 +59,18 @@ def test_dimension_validation():
     assert vector[0] == 1.0
 
 
+def test_database_examples_redacted_but_unknown_passwords_rejected():
+    for password in ["password", "[YOUR-PASSWORD]", "[YOUR_PASSWORD]"]:
+        raw = f"Setup: postgresql://example:{password}@localhost:5432/app".encode()
+        text = normalize(raw, 1000)
+        assert text == "Setup: postgresql://[credentials omitted]@localhost:5432/app"
+        assert "example:" not in text
+    with pytest.raises(ValueError, match="Potential credential"):
+        normalize(b"postgresql://app:unrecognized-value@database.example/app", 1000)
+    with pytest.raises(ValueError, match="Potential credential"):
+        normalize(b"postgresql://app:password@localhost/app\nghp_" + b"x" * 30, 1000)
+
+
 def test_fenced_headings_and_multilingual_byte_limits(settings):
     from dataclasses import replace
 

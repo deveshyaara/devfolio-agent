@@ -39,6 +39,19 @@ def normalize(raw, max_bytes):
     if len(raw) > max_bytes or b"\x00" in raw:
         raise ValueError("Unsupported document size or binary content")
     text = unicodedata.normalize("NFC", raw.decode("utf-8-sig")).replace("\r\n", "\n").replace("\r", "\n")
+
+    # Documentation commonly includes local setup URLs or explicit placeholders.
+    # Remove their entire userinfo rather than sending even example credentials
+    # to the embedding provider. All other credential matches still reject the file.
+    def redact_example(match):
+        value = match.group()
+        if value.startswith(("postgres://", "postgresql://")):
+            password = value.split("://", 1)[1].split(":", 1)[1][:-1]
+            if password == "password" or re.fullmatch(r"\[YOUR[-_]PASSWORD\]", password, re.I):
+                return value.split("://", 1)[0] + "://[credentials omitted]@"
+        return value
+
+    text = SECRET.sub(redact_example, text)
     if SECRET.search(text):
         raise ValueError("Potential credential detected; document rejected")
     return "\n".join(line.rstrip() for line in text.splitlines()).strip()
