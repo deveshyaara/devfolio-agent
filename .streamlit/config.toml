@@ -1,0 +1,4 @@
+[server]
+# Bound transport payloads before application-level chat validation.
+maxMessageSize = 1
+maxUploadSize = 1

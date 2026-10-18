@@ -1,78 +1,64 @@
+import logging
+
 import streamlit as st
-from langchain_core.messages import HumanMessage, AIMessage
 
-from dotenv import load_dotenv
-load_dotenv()
+from agent import MY_NAME
+from devfolio.runtime import get_runtime
+from devfolio.sessions import ChatSession, RequestRejected
 
-# Import agent and configuration
+st.set_page_config(page_title=f"{MY_NAME} - AI Portfolio Assistant", page_icon="🤖", layout="centered")
+st.title("🤖 Portfolio Assistant")
+st.caption(f"Ask me about {MY_NAME}'s work, skills, and projects.")
+
 try:
-    from agent import app as portfolio_agent
-    from agent import MY_NAME, MY_PROFILE_PIC_URL, MY_LINKEDIN_URL, MY_RESUME_URL, GITHUB_USERNAME
-except ImportError:
-    st.error("❌ Could not import agent.py. Make sure it's in the same directory.")
+    if "chat_session" not in st.session_state:
+        st.session_state.chat_session = ChatSession(get_runtime())
+except Exception as exc:
+    logging.getLogger(__name__).error("configuration_unavailable", extra={"error_type": type(exc).__name__})
+    st.error("The assistant is temporarily unavailable. Please try again later.")
     st.stop()
 
-# Page configuration
-st.set_page_config(
-    page_title=f"{MY_NAME} - AI Portfolio Assistant",
-    page_icon="🤖",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
-
-
-
-# Main chat interface
-st.title("🤖 Portfolio Assistant")
-st.markdown(f'<p class="subtitle">Ask me anything about {MY_NAME}\'s work, skills, and projects</p>', unsafe_allow_html=True)
-
-# Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {
-            "role": "assistant", 
-            "content": f"👋 Hi! I'm {MY_NAME}'s AI assistant. I can help you learn about projects, technical skills, and experience. What would you like to know?"
-        }
+        {"role": "assistant", "content": f"👋 Hi! I'm {MY_NAME}'s AI assistant. What would you like to know?"}
     ]
 
-# Display chat history
+if st.session_state.chat_session.expire_if_needed():
+    st.session_state.messages = []
+    st.info("Your temporary conversation expired. A new conversation has started.")
+
+if st.button("New conversation"):
+    st.session_state.chat_session.reset()
+    st.session_state.messages = []
+    st.rerun()
+
+st.caption(
+    "Anonymous conversations are temporary: they reset after 30 minutes of inactivity, 12 turns, a stopped request, or a backend restart."
+)
 for message in st.session_state.messages:
     with st.chat_message(message["role"], avatar="🧑‍💻" if message["role"] == "user" else "🤖"):
         st.markdown(message["content"])
 
-# Chat input
-if prompt := st.chat_input("💬 Ask about projects, skills, experience..."):
-    # Add user message
+# Streamlit's native Stop control interrupts a running script. The generator's
+# finally block closes the graph stream and drops any incomplete checkpoints.
+if prompt := st.chat_input("Ask about projects, skills, experience…", max_chars=4000):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(prompt)
-
-    # Generate response
     with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner("🤔 Thinking..."):
-            try:
-                # Generate thread ID if not exists
-                if "thread_id" not in st.session_state:
-                    import uuid
-                    st.session_state.thread_id = str(uuid.uuid4())
-
-                # Call agent using LangGraph checkpointer, sending ONLY the new message
-                inputs = {"messages": [HumanMessage(content=prompt)]}
-                config = {"configurable": {"thread_id": st.session_state.thread_id}}
-                
-                response = portfolio_agent.invoke(inputs, config=config)
-                bot_response = response["messages"][-1].content
-                if isinstance(bot_response, list):
-                    bot_response = "".join(
-                        item["text"] if isinstance(item, dict) and "text" in item else (item if isinstance(item, str) else "")
-                        for item in bot_response
-                    )
-
-                # Display and save response
-                st.markdown(bot_response)
-                st.session_state.messages.append({"role": "assistant", "content": bot_response})
-
-            except Exception as e:
-                error_msg = f"❌ Sorry, I encountered an error: {str(e)}"
-                st.error(error_msg)
-                st.session_state.messages.append({"role": "assistant", "content": error_msg})
+        try:
+            with st.spinner("🤔 Thinking…"):
+                answer = st.write_stream(st.session_state.chat_session.stream(prompt))
+            if not answer:
+                answer = "I couldn't complete that answer. Please try again."
+                st.markdown(answer)
+            st.session_state.messages.append({"role": "assistant", "content": answer})
+        except RequestRejected as exc:
+            st.warning(str(exc))
+        except Exception as exc:
+            logging.getLogger(__name__).warning("chat_unavailable", extra={"error_type": type(exc).__name__})
+            st.error(
+                "The response was interrupted or the assistant is temporarily unavailable. Start a new conversation or try again later."
+            )
+    # Bound displayed history independently from graph retention.
+    st.session_state.messages = st.session_state.messages[-26:]
