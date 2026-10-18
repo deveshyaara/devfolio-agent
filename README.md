@@ -1,405 +1,59 @@
-# 🤖 DevFolio Agent - AI Portfolio Chatbot
+# DevFolio Agent
 
-An intelligent AI assistant that represents your portfolio, built with **LangGraph**, **Google Gemini**, and **Streamlit**. This chatbot automatically syncs with your GitHub portfolio projects and helps recruiters learn about your work, skills, and contact information through natural conversation.
----
-Live - https://devfolio-agent.streamlit.app/
-## ✨ Features
+LangGraph + Gemini portfolio assistant, served through Streamlit and embedded by the Next.js portfolio. Project knowledge lives in Supabase Postgres/pgvector. GitHub ingestion is an explicit scheduled/manual job; importing the agent or sending a message never starts ingestion.
 
-### 🔄 **Automated GitHub Sync**
-- Automatically clones and syncs portfolio projects tagged with `portfolio` topic from GitHub
-- Pulls latest changes to keep project information up-to-date
-- Loads README files from each project for comprehensive knowledge
-
-### 🧠 **Intelligent Question Answering**
-- **Project Discovery**: Lists all portfolio projects with descriptions
-- **Tech Stack Analysis**: Synthesizes all technologies used across projects
-- **Specific Project Details**: Searches for detailed information about individual projects
-- **Contact Information**: Provides LinkedIn, Resume, and Calendly scheduling links
-- **Smart Context**: Uses RAG (Retrieval Augmented Generation) with FAISS vector store
-
-### 🛠️ **Specialized Tools**
-The agent uses 6 dedicated tools:
-1. `get_all_project_contexts` - Returns ALL project READMEs for synthesis
-2. `project_retriever` - Searches specific project details using FAISS
-3. `get_personal_info` - Returns all contact links
-4. `get_scheduling_link` - Provides Calendly meeting link
-5. `get_linkedin_link` - Returns LinkedIn profile
-6. `get_resume_link` - Returns resume/CV link
-
-### 🎨 **Modern UI**
-- Beautiful gradient backgrounds with glass-morphism effects
-- Responsive chat interface built with Streamlit
-- Custom avatars and typography
-- Mobile-friendly design
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **Python 3.12+**
-- **Google API Key** (for Gemini)
-- **GitHub Account** with portfolio projects tagged with `portfolio` topic
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/deveshyaara/devfolio-agent.git
-   cd devfolio-agent
-   ```
-
-2. **Create virtual environment**
-   ```bash
-   python -m venv venv
-   
-   # Windows
-   .\venv\Scripts\activate
-   
-   # macOS/Linux
-   source venv/bin/activate
-   ```
-
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configure environment variables**
-   
-   Create a `.env` file in the project root:
-   ```env
-   # API Key
-   GOOGLE_API_KEY="your-google-api-key-here"
-   
-   # GitHub Info
-   GITHUB_USERNAME="your-github-username"
-   PORTFOLIO_TOPIC="portfolio"
-   
-   # Personal & Contact Info
-   MY_NAME="Your Name"
-   MY_LINKEDIN_URL="https://linkedin.com/in/yourprofile"
-   MY_RESUME_URL="https://yourportfolio.com/resume"
-   MY_CALENDLY_LINK="https://calendly.com/yourlink/30min"
-   ```
-
-5. **Tag your GitHub repositories**
-   
-   Go to each portfolio project on GitHub and add the `portfolio` topic to make them discoverable by the agent.
-
-### Running the Application
-
-#### Web Interface (Streamlit)
-```bash
-streamlit run app.py
-```
-Then open `http://localhost:8501` in your browser.
-
-#### Command Line (Testing)
-```bash
-python agent.py
-```
-This runs predefined test conversations to verify the agent works correctly.
-
----
-
-## 📁 Project Structure
-
-```
-devfolio-agent/
-├── agent.py                 # Core agent logic with LangGraph workflow
-├── app.py                   # Streamlit web interface
-├── chat_bot.py             # (Legacy/backup file)
-├── requirements.txt        # Python dependencies
-├── .env                    # Environment variables (not in git)
-├── .gitignore             # Git ignore rules
-├── README.md              # This file
-└── project_repos/         # Cloned portfolio repositories (auto-generated)
+```text
+GitHub public repositories with configured topic
+  → paginated discovery → immutable commit/tree/blob snapshots
+  → allowlisted Markdown → stable heading-aware chunks
+  → reusable Gemini embeddings → atomic Postgres publication
+  → bounded cosine retrieval → LangGraph tools → Gemini → Streamlit iframe
 ```
 
----
+## Development
 
-## 🏗️ Architecture
+Python 3.12, [uv](https://docs.astral.sh/uv/), and a Supabase database with pgvector are required. No database is needed for the offline tests.
 
-### Agent Workflow (LangGraph)
-
-```
-┌─────────────┐
-│   User      │
-│   Query     │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────┐
-│  System Message │ ◄─── Defines role & tool usage
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Call Model     │ ◄─── Google Gemini 2.0 Flash
-│  (LLM)          │
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    │ Need    │
-    │ Tool?   │
-    └────┬────┘
-         │
-    ┌────┴────────┐
-    │             │
-   Yes           No
-    │             │
-    ▼             ▼
-┌───────────┐  ┌──────────┐
-│ Call Tool │  │ Respond  │
-└─────┬─────┘  └──────────┘
-      │
-      ▼
-┌─────────────────┐
-│  Tool Execution │
-│  - Get Projects │
-│  - Get Contacts │
-│  - Search FAISS │
-└────────┬────────┘
-         │
-         ▼
-  ┌──────────────┐
-  │ Back to LLM  │
-  │ to generate  │
-  │ final answer │
-  └──────────────┘
+```sh
+uv sync --frozen
+cp .env.example .env
+# Fill server-side configuration; do not commit .env.
+uv run pytest -m 'not postgres'
+uv run ruff check .
+uv run ruff format --check .
 ```
 
-### Technology Stack
+Apply `migrations/001_knowledge.sql` as database owner and provision separate reader/writer login users as described in [operations](docs/OPERATIONS.md). Then:
 
-- **LangGraph 1.0.2**: Agent orchestration and workflow management
-- **Google Gemini 2.0 Flash**: LLM for chat and reasoning
-- **HuggingFace Embeddings**: Local embedding model (all-MiniLM-L6-v2) as fallback
-- **FAISS 1.12.0**: Vector database for semantic search
-- **Streamlit 1.40.0**: Web UI framework
-- **GitPython 3.1.45**: Automated repository cloning and syncing
-- **LangChain 0.3.18**: Tool integration and RAG pipeline
-
----
-
-## 🎯 Key Features Explained
-
-### 1. **Smart Context Synthesis**
-Instead of hardcoding project lists, the agent reads ALL README files and synthesizes information on demand. This allows it to:
-- List projects dynamically
-- Extract comprehensive tech stacks
-- Answer open-ended questions about your work
-
-### 2. **Automatic GitHub Sync**
-```python
-# On startup, the agent:
-1. Fetches all repos with 'portfolio' topic via GitHub API
-2. Clones new repos to ./project_repos/
-3. Pulls latest changes for existing repos
-4. Loads all README.md files
-5. Creates FAISS vector embeddings
+```sh
+uv run python -m devfolio.sync --activate-index
+uv run streamlit run app.py
+# Optional health sidecar on a host that supports it:
+uv run uvicorn health:app --host 0.0.0.0 --port 8000
 ```
 
-### 3. **Tool-First Approach**
-The system message explicitly instructs the LLM to:
-- **NEVER hallucinate** contact information
-- **ALWAYS use tools** for factual data
-- Map specific question types to appropriate tools
+Use `SUPABASE_SYNC_DB_URL` only in ingestion. Runtime `SUPABASE_DB_URL` should belong to a user granted `devfolio_reader`; it cannot write knowledge. Every connection to a remote database must require TLS. No Supabase HTTP key is used.
 
-### 4. **Fallback Embedding Model**
-If Google's embedding API quota is exceeded, the system automatically falls back to local HuggingFace embeddings, ensuring uninterrupted service.
+`requirements.txt` is the hash-pinned production export for Streamlit Community Cloud; `pyproject.toml` and `uv.lock` are the dependency source of truth. Regenerate the export after deliberate upgrades:
 
----
-
-## 💡 Usage Examples
-
-### Example Conversations
-
-**Getting Contact Information:**
-```
-User: How can I contact him?
-Agent: Here are Devesh Tiwari's contact links:
-       - LinkedIn: https://linkedin.com/in/deveshcodes
-       - Schedule a Meeting: https://calendly.com/tiwaridevesh887/30min
-       - Resume: https://devfolio-taupe.vercel.app/resume
+```sh
+uv export --frozen --no-dev --no-emit-project --format requirements-txt --output-file requirements.txt
 ```
 
-**Scheduling a Meeting:**
-```
-User: I want to schedule a meeting
-Agent: You can schedule a meeting with Devesh Tiwari using this 
-       Calendly link: https://calendly.com/tiwaridevesh887/30min
-```
+## Behavior
 
-**Listing Projects:**
-```
-User: What projects are in your portfolio?
-Agent: Devesh Tiwari's portfolio includes:
-       - WealthWise: An AI-powered finance platform
-       - E-Commerce-Backend: A RESTful API for e-commerce
-       - devfolio: A personal portfolio website
-       - Healthlink_RPC: Blockchain-based healthcare system
-       - Healthlink_Agent: AI healthcare communication system
-```
+- Preserves the six tools: projects, project search, personal info, scheduling, LinkedIn, resume.
+- Defaults to the existing Gemini chat model and Gemma fallback. Fallback handles transient failures only. Configure an empty `FALLBACK_CHAT_MODEL` to disable it.
+- Gemini Embedding 2 defaults to explicitly requested **768 dimensions**, validated on every response. Its search/document prefixes follow [Google's embedding documentation](https://ai.google.dev/gemini-api/docs/embeddings). Model 001 is also supported with its own task types and isolated profile.
+- Root READMEs and documentation under `docs/` only; no source code, dependencies, hidden files, symlinks, or secret paths. Suspected credentials or unsupported document sizes fail that repository update and preserve its last snapshot.
+- Unchanged revisions cause zero document embedding calls. Changed documents reuse existing content hashes. Removed repositories are pruned only after complete discovery and successful processing of every eligible repository; an empty source set needs explicit `--allow-empty`.
+- New model/version/chunk profiles build separately. `--activate-index` publishes a complete profile; deploy matching runtime settings only afterward.
+- Conversation checkpoints are **anonymous, session-owned, temporary**. They reset after inactivity, a turn limit, interruption, or restart. Project knowledge survives restart. There is no account system or public thread lookup endpoint.
+- Streamlit incrementally renders model output. Closing a generator releases limits and clears interrupted checkpoint state. Provider calls have transport timeouts; cancellation is cooperative while a provider call is blocked.
+- Health sidecar: `/health` checks process liveness; `/ready` checks database accessibility and the active profile. Standard Streamlit liveness remains `/_stcore/health`.
 
-**Tech Stack Inquiry:**
-```
-User: What technologies do you know?
-Agent: [Synthesizes from all READMEs]
-       Based on the projects, Devesh has experience with:
-       - Languages: Python, JavaScript, TypeScript, Java, Solidity
-       - Frameworks: Next.js, React, Spring Boot, Flask, Streamlit
-       - Databases: PostgreSQL, MongoDB, Redis
-       - Cloud: AWS, Azure, Hyperledger Fabric
-       - AI/ML: LangChain, OpenAI, Gemini, FAISS
-```
+## Verification and deployment
 
----
+See [audit](docs/AUDIT.md), [operations and rollback](docs/OPERATIONS.md), and [engineering/test report](docs/ENGINEERING_REPORT.md). Tests use mocks except those explicitly marked `postgres`; use only a disposable database ending in `_test` for those. Root `test_*.py` files are preserved manual, live-service diagnostics and are deliberately excluded from offline pytest collection.
 
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GOOGLE_API_KEY` | ✅ Yes | Google API key for Gemini |
-| `GITHUB_USERNAME` | ✅ Yes | Your GitHub username |
-| `PORTFOLIO_TOPIC` | ❌ No | GitHub topic to filter repos (default: "portfolio") |
-| `MY_NAME` | ❌ No | Your full name |
-| `MY_LINKEDIN_URL` | ❌ No | LinkedIn profile URL |
-| `MY_RESUME_URL` | ❌ No | Resume/CV link |
-| `MY_CALENDLY_LINK` | ❌ No | Calendly scheduling link |
-
-### Customization
-
-**Change the LLM Model:**
-```python
-# In agent.py, line ~43
-model = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash-exp",  # Change to another Gemini model
-    temperature=0.7
-)
-```
-
-**Adjust Embedding Model:**
-```python
-# In agent.py, line ~95
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"  # Change model
-)
-```
-
-**Modify UI Colors:**
-```python
-# In app.py, update the CSS gradient
-background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**1. Import Error: ToolExecutor not found**
-- **Solution**: Update to LangGraph 1.0.2+ which uses `ToolNode` instead
-
-**2. Google API Quota Exceeded**
-- **Solution**: The system automatically falls back to HuggingFace embeddings
-
-**3. Agent hallucinating contact info**
-- **Solution**: Ensure system message explicitly instructs to use tools (already implemented)
-
-**4. Projects not loading**
-- **Solution**: 
-  - Verify `GITHUB_USERNAME` is correct
-  - Ensure repos are tagged with `portfolio` topic
-  - Check GitHub API rate limits
-
-**5. Streamlit app won't start**
-- **Solution**: 
-  ```bash
-  pip install --upgrade streamlit
-  streamlit run app.py
-  ```
-
----
-
-## 📝 Development
-
-### Running Tests
-```bash
-python agent.py
-```
-This executes predefined test queries and shows the agent's responses.
-
-### Adding New Tools
-
-1. **Define the function** in `agent.py`:
-   ```python
-   def my_new_tool(query: str = ""):
-       # Your logic here
-       return "result"
-   ```
-
-2. **Create the tool**:
-   ```python
-   my_tool = Tool(
-       name="my_new_tool",
-       func=my_new_tool,
-       description="Clear description for LLM"
-   )
-   ```
-
-3. **Add to tools list**:
-   ```python
-   tools = [...existing tools..., my_tool]
-   ```
-
-4. **Update system message** to instruct when to use it
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **LangChain/LangGraph** for the agent framework
-- **Google Gemini** for powerful LLM capabilities
-- **Streamlit** for the beautiful UI framework
-- **HuggingFace** for local embedding models
-
----
-
-## 📧 Contact
-
-**Devesh Tiwari**
-- LinkedIn: [deveshcodes](https://linkedin.com/in/deveshcodes)
-- Portfolio: [devfolio-taupe.vercel.app](https://devfolio-taupe.vercel.app)
-- Schedule: [Book a meeting](https://calendly.com/tiwaridevesh887/30min)
-
----
-
-## 🌟 Star History
-
-If you find this project useful, please consider giving it a ⭐!
-
----
-
-
+Local tests cannot establish live Gemini answer quality, production Supabase availability, or deployed iframe/Stop behavior. Complete the deployment acceptance checks before switching production away from the previous FAISS release.
