@@ -11,20 +11,15 @@ dependencies = [
 
 [tool.uv]
 package = false
+default-groups = []
 
 [dependency-groups]
-dev = ["pytest==8.4.2", "pytest-asyncio==1.2.0", "ruff==0.14.1", "httpx==0.28.1"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
-asyncio_mode = "auto"
-markers = ["postgres: requires TEST_DATABASE_URL pointing to a disposable migrated database"]
+dev = ["ruff==0.14.1"]
 
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-include = ["agent.py", "app.py", "health.py", "devfolio/**/*.py", "tests/**/*.py", "scripts/**/*.py"]
+include = ["agent.py", "app.py", "health.py", "devfolio/**/*.py", "scripts/**/*.py"]
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]

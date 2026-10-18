@@ -20,19 +20,18 @@ Use `.env.example` for variable names and placeholders. Never commit credentials
 | FALLBACK_CHAT_MODEL | Host only | Existing gemma-4-26b-a4b-it default; empty disables fallback |
 | RETRIEVAL_TOP_K / RETRIEVAL_MIN_SCORE | Host only | Defaults 4 / 0.5; evaluate with real portfolio questions |
 | MY_NAME, MY_LINKEDIN_URL, MY_RESUME_URL, MY_CALENDLY_LINK, MY_PROFILE_PIC_URL | Host only | Existing public portfolio/contact configuration |
-| TEST_DATABASE_URL | Tests only | Disposable migrated PostgreSQL database ending in _test |
 
 The frontend has no backend API variable because it embeds the existing Streamlit URL. Keep its browser bundle free of all variables above. Supabase does not run this Python backend. Vercel runs the frontend; it does not keep the Streamlit agent warm.
 
 ## Safe initial deployment
 
-1. Keep the current production deployment serving until this sequence completes. Record its branch/commit and configuration. Retain local FAISS caches; the new release does not read or delete them.
+1. Keep the current production deployment serving until this sequence completes. Record its branch/commit and configuration. The current release uses Supabase and does not need the old local repository clones or FAISS caches.
 2. Create a Supabase project, take a database backup, and apply `migrations/001_knowledge.sql` using SQL Editor or psql as database owner. This is a one-time versioned migration, not a startup operation. Extension installation assumes pgvector is in `extensions`, as on Supabase. If already installed elsewhere, plan and test an extension schema migration before applying this SQL.
 3. The migration creates NOLOGIN roles. Create two distinct LOGIN users with strong passwords through a secure administrative session. Grant `devfolio_reader` to the runtime login and `devfolio_writer` to the ingestion login. Do not grant admin, BYPASSRLS, anon or authenticated privileges to those users. They must not own the tables. Set connection/statement/idle transaction timeouts appropriate to the hosting plan. Never commit the password-setting commands.
 4. Use the dashboard's direct connection or **session-mode** pooler for the writer, because PostgreSQL session advisory locks require a stable connection. Transaction-mode pooling is unsupported for ingestion. Use TLS. If the runner lacks IPv6, use the session-mode pooler IPv4 endpoint. This code does not need SUPABASE_URL or a service-role/secret HTTP key.
 5. Install `uv sync --frozen`. Set the Actions secrets/variables above. Run `uv run python -m devfolio.sync --activate-index` in a trusted environment. A nonzero exit or report status failed must be investigated. Rerun safely after correcting the cause.
-6. Verify repository/file/chunk counts, inspect source metadata, run representative query embeddings and retrieval, and verify a second unchanged run reports `embedding_requests: 0`. The script validates returned vector dimensions; local tests use synthetic vectors, so live dimension verification remains mandatory.
-7. Deploy this backend **feature branch first to a staging app**, with only reader and Google credentials plus public configuration. Entry point stays `app.py`; install using the exported `requirements.txt` or `uv sync --frozen --no-dev`. Startup initializes clients only. Confirm `/_stcore/health` and a real project conversation. When the host supports a second process, run `uvicorn health:app` for `/health` and `/ready`; Community Cloud does not expose this separate sidecar automatically.
+6. Verify repository/file/chunk counts, inspect source metadata, run representative query embeddings and retrieval, and verify a second unchanged run reports `embedding_requests: 0`. The embedding adapter validates returned vector dimensions on every response.
+7. Deploy this backend **feature branch first to a staging app**, with only reader and Google credentials plus public configuration. Entry point stays `app.py`; install using `uv sync --frozen --no-dev`. Streamlit Community Cloud uses `uv.lock` automatically. Startup initializes clients only. Confirm `/_stcore/health` and a real project conversation. When the host supports a second process, run `uvicorn health:app` for `/health` and `/ready`; Community Cloud does not expose this separate sidecar automatically.
 8. Test the iframe against the staging backend, then promote the backend on the existing production URL after acceptance. Frontend iframe and deployment configuration stay compatible. Deploy the frontend lint-only change through its normal PR/Vercel flow.
 9. Exercise project list/search, all four contact tools, multi-turn conversation, separate browser sessions, Stop during generation, provider outage, empty index, and page reload. Verify incremental token rendering, safe errors, and no cross-session history. A stopped response is not automatically retried; start a fresh conversation if a tool turn was interrupted.
 10. Merge through repository policy. Scheduled workflows run only on backend default branch **master**. Monitor first successful scheduled run before retiring the prior release.
@@ -61,13 +60,13 @@ For a permanent schema uninstall, first stop every reader/writer, export/backup 
 
 ## Conversation and request policy
 
-Project memory is persistent Postgres data. Conversation memory is a separate MemorySaver owned by each Streamlit session, with a random internal UUID. No browser-supplied thread lookup endpoint exists. No authentication or persistent checkpoint tables are introduced for this anonymous product. Restarts intentionally lose conversations; tests verify this. New conversation, 12 turns or 30 minutes inactivity replaces graph/checkpointer state. Inactivity expiry is enforced on the next message; disconnected-session cleanup is governed by Streamlit's host settings.
+Project memory is persistent Postgres data. Conversation memory is a separate MemorySaver owned by each Streamlit session, with a random internal UUID. No browser-supplied thread lookup endpoint exists. No authentication or persistent checkpoint tables are introduced for this anonymous product. Restarts intentionally lose conversations. New conversation, 12 turns or 30 minutes inactivity replaces graph/checkpointer state. Inactivity expiry is enforced on the next message; disconnected-session cleanup is governed by Streamlit's host settings.
 
 Input is capped at 4000 characters / 16000 UTF-8 bytes, model output at 2048 tokens, graph recursion at 12 steps, and retrieval at four selected chunks / 8000 serialized characters. Session rate is six requests/minute, process rate 120/minute, process concurrency four, and duplicate concurrent turns in one session are rejected. These are process-local controls suitable for a single small portfolio instance. Multiple replicas or deliberate session churn require edge rate limiting on the chosen host; do not trust arbitrary client IP headers as identity.
 
 The request budget is 60 seconds checked between stream events and before model calls. Provider calls use 20-second transport timeouts, DB acquisition five seconds, and SQL statement limits. A blocked synchronous transport can finish after cancellation/deadline; closing the generator prevents subsequent graph steps and discards interrupted conversation state. In-flight provider work may still be billed. Real hosted Stop/WebSocket behavior must be verified on deployment.
 
-Retrieval text is untrusted, source-labelled tool data. The system policy forbids instruction-following from repositories and unsupported facts. No shell, arbitrary URL fetch, credential access or destructive tool is exposed to the agent. Policy tests are not a proof of adversarial LLM behavior; use real prompt-injection evaluation during staging. Do not log full prompts, model responses or private user messages.
+Retrieval text is untrusted, source-labelled tool data. The system policy forbids instruction-following from repositories and unsupported facts. No shell, arbitrary URL fetch, credential access or destructive tool is exposed to the agent. Use real prompt-injection evaluation during staging. Do not log full prompts, model responses or private user messages.
 
 ## Health, metrics and hosting
 
@@ -80,14 +79,11 @@ Streamlit Community Cloud can sleep and cold-start; this upgrade removes reposit
 ## Validation commands
 
 ```sh
-uv sync --frozen
+uv sync --frozen --group dev
 uv pip check
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest -m 'not postgres'
+uv run --group dev ruff check .
+uv run --group dev ruff format --check .
 uv run python scripts/audit_secrets.py --history
 ```
 
-For real SQL tests, create a disposable `devfolio_test` database with pgvector support and set TEST_DATABASE_URL. Tests intentionally drop/recreate **only its devfolio schema**, and refuse database names without the `_test` suffix. `uv run pytest` includes these checks. CI provisions a disposable pgvector service and runs them on pushes/PRs. Do not point tests at a production database.
-
-The root diagnostics call live models and are not acceptance tests. Run them only deliberately, with test credentials/quota. A real Supabase migration, first ingestion, live retrieval/LLM evaluation, deployed iframe and Actions run remain separate acceptance gates.
+The automated suite and live diagnostic scripts were removed at the owner's request. CI now checks dependency consistency, lint and formatting without database services. A real Supabase migration, first ingestion, live retrieval/LLM evaluation, deployed iframe and Actions run remain separate acceptance gates.

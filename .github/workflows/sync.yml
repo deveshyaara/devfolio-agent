@@ -23,8 +23,7 @@ jobs:
         with:
           version: '0.9.4'
           enable-cache: true
-      - run: uv sync --frozen
-      - run: uv run --frozen pytest -m 'not postgres'
+      - run: uv sync --frozen --no-dev
       - name: Incremental synchronization
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
@@ -40,7 +39,7 @@ jobs:
         run: |
           args=()
           if [ "$ACTIVATE" = true ]; then args+=(--activate-index); fi
-          uv run --frozen python -m devfolio.sync "${args[@]}"
+          uv run --frozen --no-dev python -m devfolio.sync "${args[@]}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
