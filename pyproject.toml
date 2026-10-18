@@ -17,6 +17,7 @@ dev = ["pytest==8.4.2", "pytest-asyncio==1.2.0", "ruff==0.14.1", "httpx==0.28.1"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 markers = ["postgres: requires TEST_DATABASE_URL pointing to a disposable migrated database"]
 

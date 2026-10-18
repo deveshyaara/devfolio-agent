@@ -93,6 +93,7 @@ Local inspection found Google/GitHub/personal configuration names but no SUPABAS
 | uv export --frozen --no-dev --no-emit-project --format requirements-txt --output-file requirements.txt | Completed; hash-pinned production export generated |
 | uv pip check | 87 installed packages checked, compatible |
 | python -m pytest -q with disposable TEST_DATABASE_URL | **69 passed** in the final suite; includes real PostgreSQL 16/pgvector, not production Supabase |
+| First GitHub Actions test run | Failed during collection because the pytest console entry point omitted the uninstalled repository package from sys.path. Added explicit pytest pythonpath configuration, then verified the console invocation and reran CI |
 | ruff check . / ruff format --check . | Passed after formatting the final SQL test; fixes applied during implementation |
 | PostgreSQL tests alone | Both passed before inclusion in final suite; writer/reader permissions, cosine filtering, transaction rollback, scope advisory lock, dimension constraint verified |
 | Streamlit AppTest | Simulated chat input → real LangGraph → mocked model → incremental UI response; separate session histories and generic configuration errors verified. Initial path/harness issues corrected |
@@ -102,6 +103,7 @@ Local inspection found Google/GitHub/personal configuration names but no SUPABAS
 | frontend npm run typecheck | Passed |
 | frontend npm run lint | Initially one existing no-unescaped-entities error; entity fix applied and rerun passed |
 | frontend npm run build | Passed; production routes /, /_not-found and /resume generated |
+| Frontend Vercel PR checks | Automatic branch preview deployment and preview-feedback checks passed; production was not changed |
 | python -m scripts.live_probe | Failed: embedding ClientError; primary Gemini and fallback Gemma GoogleAuthenticationError. Actual vector dimensions and live model tool round trips are **not verified** |
 | docker info/run and PostgreSQL version query | Docker engine started; disposable pgvector/pgvector:pg16 on 127.0.0.1:55432, PostgreSQL 16.15; no production DB used |
 | git diff --check / staged diff review | Run before commits; generated caches/secrets/local DBs excluded |
@@ -138,7 +140,7 @@ Required next actions: provide the two Supabase DB URLs/users and apply migratio
 
 ## K. Git and review delivery
 
-Backend feature branch: `codex/persistent-rag`, based on the backend default branch's e88d560 revision. Frontend feature branch: `codex/reliability-validation`, based on main at 9b5011f. Commits, push outcomes and review links are provided in the completion message/PRs, after final validation. Neither protected/default branch is pushed directly; no force-push or unrelated user changes are included.
+Backend feature branch: `codex/persistent-rag`, initial implementation commit `a50c747f9585744d6e34a04f1d4d6f1109b58169`, based on default master at e88d560. Frontend feature branch: `codex/reliability-validation`, commit `2692255cd86129a621b055801e80ed38164821f7`, based on main at 9b5011f. Both were pushed successfully. Draft review links: [backend PR #1](https://github.com/deveshyaara/devfolio-agent/pull/1), [frontend PR #7](https://github.com/deveshyaara/devfolio/pull/7). A follow-up backend commit fixes the console test import path; its hash and final CI result are provided in the completion message. Neither protected/default branch was pushed directly; no force-push or unrelated user changes are included. The GitHub connector lacked PR-creation permission; the already-authorized local Git credential created the drafts successfully without exposing credentials.
 
 ## Official implementation references
 
